@@ -71,11 +71,13 @@ public class AzureOpenAIService : IAzureOpenAIService
         // Get the completion
         var response = await _chatClient.CompleteChatAsync(messages, options);
 
-        // Map back to Domain model
+        var firstContent = response.Value.Content.FirstOrDefault();
+        var text = firstContent?.Text ?? string.Empty;
+
         return new ChatCompletionResponse
         {
-            Content = response.Value.Content[0].Text,
-            TokensUsed = response.Value.Usage.TotalTokenCount,
+            Content = text,
+            TokensUsed = response.Value.Usage?.TotalTokenCount ?? 0,
             Model = response.Value.Model,
             GeneratedAt = DateTime.UtcNow
         };

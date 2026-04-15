@@ -128,16 +128,14 @@ public class ConversationService : IConversationService
     }
 
     public async Task<ChatResponseDto> GetStructuredResponseAsync(
-        string prompt,
+        StructuredPromptRequestDto request,
         CancellationToken cancellationToken = default)
     {
-        // Validate input
-        if (string.IsNullOrWhiteSpace(prompt))
+        if (string.IsNullOrWhiteSpace(request.Prompt))
             throw new ArgumentException("Prompt cannot be empty");
 
-        // Create chat completion request with structured prompt
         var structuredPrompt = $@"
-                Please provide a structured response to: {prompt}
+                Please provide a structured response to: {request.Prompt}
 
                 Format your response as:
                 1. Main Answer:
