@@ -14,6 +14,7 @@ public static class DependencyInjection
         services.AddScoped<IConversationService, ConversationService>();
         services.AddScoped<IEhrClinicalCopilotService, EhrClinicalCopilotService>();
         services.AddScoped<IAzureIntegrationCatalogService, AzureIntegrationCatalogService>();
+        services.AddScoped<IClientSummaryService, ClientSummaryService>();
 
         // Register AutoMapper manually
         services.AddAutoMapper(Assembly.GetExecutingAssembly());

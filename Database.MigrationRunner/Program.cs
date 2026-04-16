@@ -8,10 +8,10 @@ var configuration = new ConfigurationBuilder()
     .AddEnvironmentVariables()
     .Build();
 
-var connectionString = configuration.GetConnectionString("EhrClinical");
+var connectionString = configuration.GetConnectionString("EhrClinicalAi");
 if (string.IsNullOrWhiteSpace(connectionString))
 {
-    Console.Error.WriteLine("Missing connection string 'EhrClinical'. Set it in appsettings.json or environment variables.");
+    Console.Error.WriteLine("Missing connection string 'EhrClinicalAi'. Set it in appsettings.json or environment variables.");
     return 1;
 }
 

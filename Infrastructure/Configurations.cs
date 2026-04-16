@@ -3,6 +3,7 @@ using Infrastructure.Cloud.Services;
 using Infrastructure.Data.Interfaces;
 using Infrastructure.Data.Services;
 using Infrastructure.Data.Sql;
+using Infrastructure.Messaging;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Infrastructure;
@@ -17,6 +18,8 @@ public static class AddInfrastructureConfiguration
         services.AddScoped<IAzureOpenAIService, AzureOpenAIService>();
 
         services.AddScoped<IChatRepository, SqlChatRepository>();
+
+        services.AddSingleton<IServiceBusPublisher, ServiceBusPublisher>();
 
         return services;
     }

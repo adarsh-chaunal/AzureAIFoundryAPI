@@ -3,17 +3,19 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.9.34701.34
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AzureAIFoundryAPI", "AzureAIFoundryAPI\AzureAIFoundryAPI.csproj", "{12D8EB51-988C-43C7-B3A7-5ACC36D75359}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AzureAIFoundryAPI", "AzureAIFoundryAPI\AzureAIFoundryAPI.csproj", "{12D8EB51-988C-43C7-B3A7-5ACC36D75359}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Application", "Application\Application.csproj", "{5ADCD4C7-CE4E-49A9-9DF4-1398E9BFEB0E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Application", "Application\Application.csproj", "{5ADCD4C7-CE4E-49A9-9DF4-1398E9BFEB0E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Infrastructure", "Infrastructure\Infrastructure.csproj", "{3153C323-BC1A-470F-974E-DC4FC82BB55F}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Infrastructure", "Infrastructure\Infrastructure.csproj", "{3153C323-BC1A-470F-974E-DC4FC82BB55F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Domain", "Domain\Domain.csproj", "{B4A409BD-42E8-49F8-A8A0-F16D249F39DE}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Domain", "Domain\Domain.csproj", "{B4A409BD-42E8-49F8-A8A0-F16D249F39DE}"
 EndProject
 Project("{42EA0DBD-9CF1-443E-919E-BE9C484E4577}") = "EhrClinical.Database", "EhrClinical.Database\EhrClinical.Database.sqlproj", "{F7D9ADA3-3934-4947-A9D5-85BEEF3E3E45}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Database.MigrationRunner", "Database.MigrationRunner\Database.MigrationRunner.csproj", "{45F7E2A7-4F02-4AD0-8C49-4CDD021FFA01}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Database.MigrationRunner", "Database.MigrationRunner\Database.MigrationRunner.csproj", "{45F7E2A7-4F02-4AD0-8C49-4CDD021FFA01}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EhrClinical.AzureFunction", "EhrClinical.AzureFunction\EhrClinical.AzureFunction.csproj", "{F7996024-C7D8-4A8A-A4DD-35518291DC9E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -45,6 +47,10 @@ Global
 		{45F7E2A7-4F02-4AD0-8C49-4CDD021FFA01}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{45F7E2A7-4F02-4AD0-8C49-4CDD021FFA01}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{45F7E2A7-4F02-4AD0-8C49-4CDD021FFA01}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F7996024-C7D8-4A8A-A4DD-35518291DC9E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F7996024-C7D8-4A8A-A4DD-35518291DC9E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F7996024-C7D8-4A8A-A4DD-35518291DC9E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F7996024-C7D8-4A8A-A4DD-35518291DC9E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
