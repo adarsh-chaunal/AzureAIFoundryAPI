@@ -9,6 +9,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Dapper" Version="2.1.72" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.1" />
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.19.6" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
   </ItemGroup>
@@ -16,6 +18,11 @@
   <ItemGroup>
     <ProjectReference Include="..\Application\Application.csproj" />
     <ProjectReference Include="..\Infrastructure\Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\EhrClinical.AzureFunction\Scripts\presidio_redact.py" Link="Scripts\presidio_redact.py" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\EhrClinical.AzureFunction\Scripts\requirements-presidio.txt" Link="Scripts\requirements-presidio.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

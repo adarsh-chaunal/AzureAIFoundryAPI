@@ -3,15 +3,11 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
 
-namespace EhrClinical.AzureFunction;
+namespace AzureAIFoundryAPI.Services;
 
 public sealed class PhiScrubber
 {
-    // NOTE: This is a pragmatic placeholder-based scrubber.
-    // It avoids emptying text; it replaces sensitive patterns with neutral tokens to preserve clinical meaning.
     private static readonly Regex EmailRegex = new(
         @"\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -41,23 +37,8 @@ public sealed class PhiScrubber
         _logger = logger;
     }
 
-    public string Scrub(string input, string? clientNeutralName = "Client")
-    {
-        return ScrubWithRegex(input, clientNeutralName);
-    }
-
     public async Task<PhiScrubResult> ScrubAsync(
         string input,
-        string? clientNeutralName = "Client",
-        CancellationToken cancellationToken = default)
-    {
-        return await ScrubAsync(input, clientNeutralName, providerOverride: null, cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    public async Task<PhiScrubResult> ScrubAsync(
-        string input,
-        string? clientNeutralName,
         string? providerOverride,
         CancellationToken cancellationToken = default)
     {
@@ -72,7 +53,7 @@ public sealed class PhiScrubber
 
         if (provider.Equals("Regex", StringComparison.OrdinalIgnoreCase))
         {
-            return new PhiScrubResult(ScrubWithRegex(input, clientNeutralName), "Regex", false, null);
+            return new PhiScrubResult(ScrubWithRegex(input), "Regex", false, null);
         }
 
         if (!provider.Equals("Presidio", StringComparison.OrdinalIgnoreCase))
@@ -87,65 +68,42 @@ public sealed class PhiScrubber
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            var failClosed = bool.TryParse(_configuration["PhiRedaction:FailOnPresidioError"], out var parsed) && parsed;
+            var failClosed =
+                providerOverride?.Equals("Presidio", StringComparison.OrdinalIgnoreCase) == true
+                || bool.TryParse(_configuration["PhiRedaction:FailOnPresidioError"], out var parsed) && parsed;
             if (failClosed)
             {
-                throw new InvalidOperationException("Presidio redaction failed before data left the Azure Function.", ex);
+                throw new InvalidOperationException("Presidio redaction failed before data left the API process.", ex);
             }
 
             _logger.LogWarning(ex, "Presidio redaction failed. Falling back to local regex PHI scrubber.");
-            return new PhiScrubResult(ScrubWithRegex(input, clientNeutralName), "Regex", true, ex.Message);
+            return new PhiScrubResult(ScrubWithRegex(input), "Regex", true, ex.Message);
         }
     }
 
-    private string ScrubWithRegex(string input, string? clientNeutralName = "Client")
+    private static string ScrubWithRegex(string input)
     {
-        if (string.IsNullOrWhiteSpace(input))
-        {
-            return string.Empty;
-        }
-
         var text = input;
-
         text = EmailRegex.Replace(text, "EmailAddress");
         text = PhoneRegex.Replace(text, "PhoneNumber");
         text = SsnRegex.Replace(text, "Identifier");
         text = MrnLikeIdRegex.Replace(text, "Identifier");
-
-        // Dates can be clinically important. Replace with a neutral placeholder, preserving sentence structure.
         text = DateLikeRegex.Replace(text, "Date");
-
-        // Lightweight name neutralization (best-effort). Real deployments should add an NLP/PII detector.
-        if (!string.IsNullOrWhiteSpace(clientNeutralName))
-        {
-            text = ReplaceObviousClientNameMentions(text, clientNeutralName!);
-        }
-
-        return text;
-    }
-
-    private static string ReplaceObviousClientNameMentions(string text, string placeholder)
-    {
-        // Replace "Patient:"/"Client:" prefixes and common narrative forms.
-        text = Regex.Replace(text, @"\b((?:Patient|Client|Member)?\s*Name\s*[:\-]\s*)[A-Z][A-Za-z'\-]+(?:\s+[A-Z][A-Za-z'\-]+){0,4}(?=\s*[\.;,\r\n]|$)", $"$1{placeholder}",
+        text = Regex.Replace(text, @"\b((?:Patient|Client|Member)?\s*Name\s*[:\-]\s*)[A-Z][A-Za-z'\-]+(?:\s+[A-Z][A-Za-z'\-]+){0,4}(?=\s*[\.;,\r\n]|$)", "$1Client",
             RegexOptions.IgnoreCase | RegexOptions.Multiline);
-
-        // Replace "Mr./Ms./Mrs. <LastName>" with Client
-        text = Regex.Replace(text, @"\b(Mr|Ms|Mrs|Miss|Mx)\.\s+[A-Z][a-zA-Z'\-]{1,}\b", placeholder,
+        text = Regex.Replace(text, @"\b(Mr|Ms|Mrs|Miss|Mx)\.\s+[A-Z][a-zA-Z'\-]{1,}\b", "Client",
             RegexOptions.Compiled);
-
         return text;
     }
 
     private async Task<string> ScrubWithPresidioAsync(string input, CancellationToken cancellationToken)
     {
-        var pythonExecutable = _configuration["PhiRedaction:PresidioPythonExecutable"];
-        if (string.IsNullOrWhiteSpace(pythonExecutable))
-        {
-            pythonExecutable = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "python" : "python3";
-        }
-
-        var scriptPath = ResolvePresidioScriptPath();
+        var pythonExecutable = ResolveConfiguredPath(
+            _configuration["PhiRedaction:PresidioPythonExecutable"],
+            RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "python" : "python3");
+        var scriptPath = ResolveConfiguredPath(
+            _configuration["PhiRedaction:PresidioScriptPath"],
+            Path.Combine(AppContext.BaseDirectory, "Scripts", "presidio_redact.py"));
         var timeoutSeconds = int.TryParse(_configuration["PhiRedaction:PresidioTimeoutSeconds"], out var parsedTimeout)
             ? parsedTimeout
             : 30;
@@ -173,11 +131,22 @@ public sealed class PhiScrubber
             throw new InvalidOperationException("Could not start local Presidio redaction process.");
         }
 
-        await process.StandardInput.WriteAsync(request.AsMemory(), cancellationToken).ConfigureAwait(false);
-        process.StandardInput.Close();
-
         var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
         var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+
+        try
+        {
+            await process.StandardInput.WriteAsync(request.AsMemory(), cancellationToken).ConfigureAwait(false);
+            process.StandardInput.Close();
+        }
+        catch (IOException ex)
+        {
+            var earlyOutput = await outputTask.ConfigureAwait(false);
+            var earlyError = await errorTask.ConfigureAwait(false);
+            throw new InvalidOperationException(
+                $"Presidio redaction process closed stdin before reading input. Python='{pythonExecutable}', Script='{scriptPath}', StdOut='{earlyOutput}', StdErr='{earlyError}'",
+                ex);
+        }
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
@@ -195,7 +164,12 @@ public sealed class PhiScrubber
         var output = await outputTask.ConfigureAwait(false);
         var error = await errorTask.ConfigureAwait(false);
 
-        var response = JsonSerializer.Deserialize<PresidioRedactionResponse>(output);
+        PresidioRedactionResponse? response = null;
+        if (!string.IsNullOrWhiteSpace(output))
+        {
+            response = JsonSerializer.Deserialize<PresidioRedactionResponse>(output);
+        }
+
         if (process.ExitCode != 0)
         {
             var details = !string.IsNullOrWhiteSpace(response?.Error) ? response.Error : error;
@@ -210,17 +184,25 @@ public sealed class PhiScrubber
         return response?.RedactedText ?? string.Empty;
     }
 
-    private string ResolvePresidioScriptPath()
+    private static string ResolveConfiguredPath(string? configuredPath, string defaultPath)
     {
-        var configuredPath = _configuration["PhiRedaction:PresidioScriptPath"];
-        if (!string.IsNullOrWhiteSpace(configuredPath))
+        if (string.IsNullOrWhiteSpace(configuredPath))
         {
-            return Path.IsPathRooted(configuredPath)
-                ? configuredPath
-                : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, configuredPath));
+            return defaultPath;
         }
 
-        return Path.Combine(AppContext.BaseDirectory, "Scripts", "presidio_redact.py");
+        if (Path.IsPathRooted(configuredPath))
+        {
+            return configuredPath;
+        }
+
+        var contentRootPath = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), configuredPath));
+        if (File.Exists(contentRootPath))
+        {
+            return contentRootPath;
+        }
+
+        return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, configuredPath));
     }
 
     private string[]? ReadConfiguredEntities()
@@ -267,4 +249,3 @@ public sealed record PhiScrubResult(
     string Provider,
     bool UsedFallback,
     string? Error);
-

@@ -361,3 +361,27 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Project-local Python environments and generated caches
+**/.venv/
+**/venv/
+**/__pycache__/
+*.pyc
+
+# Local configuration and secrets
+**/appsettings.json
+**/appsettings.*.json
+!**/appsettings.example.json
+!**/appsettings.*.example.json
+**/local.settings.json
+**/.env
+**/.env.*
+**/*secrets*.json
+**/*Secrets*.json
+**/serviceDependencies.local.json
+
+# Local database/emulator state
+__azurite_db_*.json
+*.sqlite
+*.sqlite3
+*.db

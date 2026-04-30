@@ -1,5 +1,6 @@
 using Infrastructure; 
 using Application;
+using AzureAIFoundryAPI.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,7 +13,8 @@ builder.Services.AddSwaggerGen();
 
 // Register infrastructure and application layers
 builder.Services.AddInfrastructure();  
-builder.Services.AddApplication();    
+builder.Services.AddApplication();
+builder.Services.AddSingleton<PhiScrubber>();
 
 var app = builder.Build();
 

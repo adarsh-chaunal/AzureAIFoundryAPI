@@ -1,10 +1,13 @@
 using System.Text;
 using Dapper;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using Infrastructure.Cloud.Interfaces;
 using Domain.Cloud;
+using System.Net;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 
@@ -77,13 +80,18 @@ namespace EhrClinical.AzureFunction
                 var bundleText = await LoadClientClinicalBundleAsTextAsync(msg.ClientId, cancellationToken)
                     .ConfigureAwait(false);
 
-                // 2) Scrub PHI with neutral placeholders to preserve readability/context
-                var scrubbed = _scrubber.Scrub(bundleText, clientNeutralName: "Client");
+                // 2) Redact PHI before anything is sent to Azure OpenAI.
+                var scrubbed = await _scrubber.ScrubAsync(bundleText, clientNeutralName: "Client", cancellationToken)
+                    .ConfigureAwait(false);
+                _logger.LogInformation(
+                    "PHI redaction completed with Provider={Provider}, UsedFallback={UsedFallback}",
+                    scrubbed.Provider,
+                    scrubbed.UsedFallback);
 
                 // 3) Generate summary using Azure OpenAI
                 var completion = await _openAi.GetChatCompletionAsync(new ChatCompletionRequest
                 {
-                    Prompt = scrubbed,
+                    Prompt = scrubbed.Text,
                     SystemPrompt =
                         "You are a clinical documentation assistant. Produce a concise but clinically faithful longitudinal client summary from the provided clinical record excerpts. " +
                         "Do not invent diagnoses, medications, or plans not present in the source. If information is missing, state it as unknown. " +
@@ -108,6 +116,106 @@ namespace EhrClinical.AzureFunction
                     .ConfigureAwait(false);
                 throw; // allow retry; idempotency should be enforced in DB if needed
             }
+        }
+
+        [Function("TestPresidioRedaction")]
+        public async Task<HttpResponseData> TestPresidioRedaction(
+            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "test/pii-redaction")] HttpRequestData request,
+            CancellationToken cancellationToken)
+        {
+            return await RedactRequestTextAsync(request, provider: null, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        [Function("TestPiiRedactionAlgorithm")]
+        public async Task<HttpResponseData> TestPiiRedactionAlgorithm(
+            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "test/pii-redaction/{provider}")] HttpRequestData request,
+            string provider,
+            CancellationToken cancellationToken)
+        {
+            return await RedactRequestTextAsync(request, provider, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        [Function("GetUnsanitizedClinicalPrompt")]
+        public async Task<HttpResponseData> GetUnsanitizedClinicalPrompt(
+            [HttpTrigger(AuthorizationLevel.Function, "get", Route = "test/clients/{clientId:int}/unsanitized-prompt")] HttpRequestData request,
+            int clientId,
+            CancellationToken cancellationToken)
+        {
+            if (clientId <= 0)
+            {
+                var badResponse = request.CreateResponse(HttpStatusCode.BadRequest);
+                await badResponse.WriteAsJsonAsync(new { error = "ClientId must be a positive integer." }, cancellationToken)
+                    .ConfigureAwait(false);
+                return badResponse;
+            }
+
+            var prompt = await LoadClientClinicalBundleAsTextAsync(clientId, cancellationToken)
+                .ConfigureAwait(false);
+
+            var response = request.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(
+                    new UnsanitizedPromptResponse(
+                        clientId,
+                        prompt,
+                        prompt.Length,
+                        "Contains unsanitized clinical text. Use only for local/debug testing."),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return response;
+        }
+
+        private async Task<HttpResponseData> RedactRequestTextAsync(
+            HttpRequestData request,
+            string? provider,
+            CancellationToken cancellationToken)
+        {
+            RedactionTestRequest? payload;
+            try
+            {
+                payload = await JsonSerializer.DeserializeAsync<RedactionTestRequest>(
+                        request.Body,
+                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true },
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (JsonException)
+            {
+                var invalidResponse = request.CreateResponse(HttpStatusCode.BadRequest);
+                await invalidResponse.WriteAsJsonAsync(new { error = "Request body must be valid JSON." }, cancellationToken)
+                    .ConfigureAwait(false);
+                return invalidResponse;
+            }
+
+            if (string.IsNullOrWhiteSpace(payload?.Text))
+            {
+                var badResponse = request.CreateResponse(HttpStatusCode.BadRequest);
+                await badResponse.WriteAsJsonAsync(new { error = "Provide text to redact in the 'text' field." }, cancellationToken)
+                    .ConfigureAwait(false);
+                return badResponse;
+            }
+
+            PhiScrubResult result;
+            try
+            {
+                result = await _scrubber.ScrubAsync(payload.Text, "Client", provider, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (ArgumentException ex)
+            {
+                var badProviderResponse = request.CreateResponse(HttpStatusCode.BadRequest);
+                await badProviderResponse.WriteAsJsonAsync(new { error = ex.Message }, cancellationToken)
+                    .ConfigureAwait(false);
+                return badProviderResponse;
+            }
+
+            var response = request.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(
+                    new RedactionTestResponse(result.Text, result.Provider, result.UsedFallback, result.Error),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return response;
         }
 
         private async Task<string> LoadClientClinicalBundleAsTextAsync(int clientId, CancellationToken cancellationToken)
@@ -156,6 +264,21 @@ namespace EhrClinical.AzureFunction
             public string? EncounterDate { get; set; }
             public string? Content { get; set; }
         }
+
+        private sealed record RedactionTestRequest(
+            [property: JsonPropertyName("text")] string? Text);
+
+        private sealed record RedactionTestResponse(
+            [property: JsonPropertyName("redactedText")] string RedactedText,
+            [property: JsonPropertyName("provider")] string Provider,
+            [property: JsonPropertyName("usedFallback")] bool UsedFallback,
+            [property: JsonPropertyName("error")] string? Error);
+
+        private sealed record UnsanitizedPromptResponse(
+            [property: JsonPropertyName("clientId")] int ClientId,
+            [property: JsonPropertyName("prompt")] string Prompt,
+            [property: JsonPropertyName("length")] int Length,
+            [property: JsonPropertyName("warning")] string Warning);
 
         private async Task<Guid> SaveClientSummaryAsync(
             Guid requestId,
